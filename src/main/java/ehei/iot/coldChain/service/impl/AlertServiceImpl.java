@@ -1,0 +1,88 @@
+package ehei.iot.coldChain.service.impl;
+
+import ehei.iot.coldChain.service.AlertService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
+
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Map;
+
+@Service
+@RequiredArgsConstructor
+public class AlertServiceImpl implements AlertService {
+
+    private final JavaMailSender mailSender;
+
+    private final String phoneNumber = "+212617555751";  // your number
+    private final String apiKey = "8064684";
+
+    private final String telegramToken = "8544825366:AAFYS-dSIFcirgJ7WOiNYnzTk-7A0moZ8CQ";
+    private final String telegramChatId = "1759851150";
+    @Override
+    public void sendEmailAlert(double temp) {
+        try {
+            SimpleMailMessage msg = new SimpleMailMessage();
+            msg.setTo("onizukasad@gmail.com");
+            msg.setSubject("⚠️ Alerte Température Élevée");
+            msg.setText("La température du capteur a atteint " + temp + " °C.");
+
+            mailSender.send(msg);
+
+            System.out.println("📧 Email sent successfully!");
+        } catch (Exception e) {
+            System.out.println("❌ Failed to send email: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public void sendWhatsappAlert(double temp) {
+        try {
+            String message = "⚠️ Alerte ColdChain: Température élevée : " + temp + "°C";
+
+            String encodedMessage = URLEncoder.encode(message, StandardCharsets.UTF_8);
+            String url = "https://api.callmebot.com/whatsapp.php?phone="
+                    + phoneNumber
+                    + "&text=" + encodedMessage
+                    + "&apikey=" + apiKey;
+
+            RestTemplate restTemplate = new RestTemplate();
+            String response = restTemplate.getForObject(url, String.class);
+
+            System.out.println("📲 WhatsApp Alert sent! Response: " + response);
+
+        } catch (Exception e) {
+            System.out.println("❌ Failed to send WhatsApp alert: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public void sendTelegramAlert(double temp) {
+        try {
+            String message = "⚠️ ColdChain Alert!\nTemperature reached " + temp + "°C.";
+
+            String url = "https://api.telegram.org/bot" + telegramToken + "/sendMessage";
+
+            RestTemplate restTemplate = new RestTemplate();
+
+            // Create JSON body
+            Map<String, Object> body = new HashMap<>();
+            body.put("chat_id", telegramChatId);
+            body.put("text", message);
+            body.put("parse_mode", "HTML");
+
+            String response = restTemplate.postForObject(url, body, String.class);
+
+            System.out.println("📨 Telegram Alert sent: " + message);
+
+        } catch (Exception e) {
+            System.out.println("❌ Failed to send Telegram alert: " + e.getMessage());
+        }
+    }
+
+
+}
