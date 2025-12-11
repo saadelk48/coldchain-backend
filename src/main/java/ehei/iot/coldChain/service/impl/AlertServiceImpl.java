@@ -18,7 +18,6 @@ public class AlertServiceImpl implements AlertService {
 
     private final JavaMailSender mailSender;
 
-    private final String phoneNumber = "+212617555751";  // your number
     private final String apiKey = "8064684";
 
     private final String telegramToken = "8544825366:AAFYS-dSIFcirgJ7WOiNYnzTk-7A0moZ8CQ";
@@ -40,25 +39,25 @@ public class AlertServiceImpl implements AlertService {
     }
 
     @Override
-    public void sendWhatsappAlert(double temp) {
+    public void sendWhatsappAlert(String phone, String message) {
         try {
-            String message = "⚠️ Alerte ColdChain: Température élevée : " + temp + "°C";
-
             String encodedMessage = URLEncoder.encode(message, StandardCharsets.UTF_8);
+
             String url = "https://api.callmebot.com/whatsapp.php?phone="
-                    + phoneNumber
+                    + phone
                     + "&text=" + encodedMessage
                     + "&apikey=" + apiKey;
 
             RestTemplate restTemplate = new RestTemplate();
             String response = restTemplate.getForObject(url, String.class);
 
-            System.out.println("📲 WhatsApp Alert sent! Response: " + response);
+            System.out.println("📲 WhatsApp Alert sent to " + phone + ": " + response);
 
         } catch (Exception e) {
             System.out.println("❌ Failed to send WhatsApp alert: " + e.getMessage());
         }
     }
+
 
     @Override
     public void sendTelegramAlert(double temp) {
