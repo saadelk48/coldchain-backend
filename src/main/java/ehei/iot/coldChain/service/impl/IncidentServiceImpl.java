@@ -88,8 +88,12 @@ public class IncidentServiceImpl implements IncidentService {
                 // 👉 FIRST TIME → create ACK + send alert
                 System.out.println("📣 Creating ACK & sending alert to " + target.getFullName());
 
-                String message = "⚠️ ColdChain Alert! Temperature reached " + temp + "°C.";
+                String message = "ColdChain Alert\nTemperature reached " + temp + " C";
+
                 alertService.sendWhatsappAlert(target.getPhone(), message);
+                alertService.sendEmailAlert(temp);
+                alertService.sendTelegramAlert(message);
+
 
                 IncidentOperatorAck ack = IncidentOperatorAck.builder()
                         .incident(incident)

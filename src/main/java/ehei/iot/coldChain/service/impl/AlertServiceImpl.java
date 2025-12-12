@@ -49,9 +49,9 @@ public class AlertServiceImpl implements AlertService {
                     + "&apikey=" + apiKey;
 
             RestTemplate restTemplate = new RestTemplate();
-            String response = restTemplate.getForObject(url, String.class);
+            restTemplate.getForObject(url, String.class);
 
-            System.out.println("📲 WhatsApp Alert sent to " + phone + ": " + response);
+            System.out.println("📲 WhatsApp Alert sent to " + phone);
 
         } catch (Exception e) {
             System.out.println("❌ Failed to send WhatsApp alert: " + e.getMessage());
@@ -59,29 +59,27 @@ public class AlertServiceImpl implements AlertService {
     }
 
 
-    @Override
-    public void sendTelegramAlert(double temp) {
-        try {
-            String message = "⚠️ ColdChain Alert!\nTemperature reached " + temp + "°C.";
 
+    @Override
+    public void sendTelegramAlert(String message) {
+        try {
             String url = "https://api.telegram.org/bot" + telegramToken + "/sendMessage";
 
             RestTemplate restTemplate = new RestTemplate();
 
-            // Create JSON body
             Map<String, Object> body = new HashMap<>();
             body.put("chat_id", telegramChatId);
             body.put("text", message);
-            body.put("parse_mode", "HTML");
 
-            String response = restTemplate.postForObject(url, body, String.class);
+            restTemplate.postForObject(url, body, String.class);
 
-            System.out.println("📨 Telegram Alert sent: " + message);
+            System.out.println("📨 Telegram Alert sent");
 
         } catch (Exception e) {
             System.out.println("❌ Failed to send Telegram alert: " + e.getMessage());
         }
     }
+
 
 
 }
