@@ -23,4 +23,8 @@ public class AppUser {
     private UserRole role;
 
     private boolean active;
+
+    @Column(name = "fcm_token")
+    private String fcmToken;
+
 }
