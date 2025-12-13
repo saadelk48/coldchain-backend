@@ -1,5 +1,6 @@
 package ehei.iot.coldChain.service.impl;
 
+//import com.google.firebase.messaging.*;
 import ehei.iot.coldChain.service.AlertService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.mail.SimpleMailMessage;
@@ -79,6 +80,42 @@ public class AlertServiceImpl implements AlertService {
             System.out.println("❌ Failed to send Telegram alert: " + e.getMessage());
         }
     }
+
+
+//    @Override
+//    public void sendPushAlert(
+//            String fcmToken,
+//            String title,
+//            String body,
+//            Long incidentId
+//    ) throws FirebaseMessagingException {
+//
+//        if (fcmToken == null || fcmToken.isBlank()) {
+//            System.out.println("⚠️ No FCM token, skipping push alert");
+//            return;
+//        }
+//
+//        Message message = Message.builder()
+//                .setToken(fcmToken)
+//
+//                // ✅ DATA ONLY — VERY IMPORTANT
+//                .putData("type", "CRITICAL")
+//                .putData("title", title)
+//                .putData("body", body)
+//                .putData("incidentId", String.valueOf(incidentId))
+//
+//                .setAndroidConfig(
+//                        AndroidConfig.builder()
+//                                .setPriority(AndroidConfig.Priority.HIGH)
+//                                .build()
+//                )
+//                .build();
+//
+//        FirebaseMessaging.getInstance().send(message);
+//
+//        System.out.println("📲 Push ALARM sent to device");
+//    }
+
 
 
 

@@ -93,7 +93,16 @@ public class IncidentServiceImpl implements IncidentService {
                 alertService.sendWhatsappAlert(target.getPhone(), message);
                 alertService.sendEmailAlert(temp);
                 alertService.sendTelegramAlert(message);
-
+//                try {
+//                    alertService.sendPushAlert(
+//                            target.getFcmToken(),
+//                            "ColdChain CRITICAL ALERT",
+//                            "Temperature reached " + temp + " C",
+//                            incident.getId()
+//                    );
+//                } catch (Exception e) {
+//                    System.out.println("❌ Failed to send push alert: " + e.getMessage());
+//                }
 
                 IncidentOperatorAck ack = IncidentOperatorAck.builder()
                         .incident(incident)
