@@ -1,12 +1,20 @@
 package ehei.iot.coldChain.service.impl;
 
 import ehei.iot.coldChain.dto.IncidentDetailsResponse;
-import ehei.iot.coldChain.entity.*;
-import ehei.iot.coldChain.enums.UserRole;
-import ehei.iot.coldChain.repository.*;
+import ehei.iot.coldChain.entity.AppUser;
+import ehei.iot.coldChain.entity.Incident;
+import ehei.iot.coldChain.entity.IncidentComment;
+import ehei.iot.coldChain.entity.IncidentOperatorAck;
+import ehei.iot.coldChain.repository.AppUserRepository;
+import ehei.iot.coldChain.repository.IncidentCommentRepository;
+import ehei.iot.coldChain.repository.IncidentOperatorAckRepository;
+import ehei.iot.coldChain.repository.IncidentRepository;
 import ehei.iot.coldChain.service.AlertService;
 import ehei.iot.coldChain.service.IncidentService;
+import ehei.iot.coldChain.service.escalation.IncidentEscalationPolicy;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -16,24 +24,21 @@ import java.util.List;
 @RequiredArgsConstructor
 public class IncidentServiceImpl implements IncidentService {
 
+    private static final Logger log = LoggerFactory.getLogger(IncidentServiceImpl.class);
+    private static final double THRESHOLD = 25.0;
+
     private final IncidentRepository incidentRepo;
     private final AppUserRepository userRepo;
     private final IncidentOperatorAckRepository ackRepo;
     private final IncidentCommentRepository commentRepo;
     private final AlertService alertService;
-
-    private static final int ALERTS_PER_OPERATOR = 3;
-    private static final double THRESHOLD = 25.0;
+    private final IncidentEscalationPolicy escalationPolicy;
 
     @Override
     public void processTemperature(double temp) {
-
-        // 1️⃣ CHECK IF INCIDENT OPEN
         Incident incident = incidentRepo.findByActiveTrue().orElse(null);
 
         if (temp >= THRESHOLD) {
-
-            // Start new incident if none exists
             if (incident == null) {
                 incident = Incident.builder()
                         .startTime(LocalDateTime.now())
@@ -41,137 +46,112 @@ public class IncidentServiceImpl implements IncidentService {
                         .alertCount(0)
                         .maxTemperature(temp)
                         .build();
-
-                incidentRepo.save(incident);
+                incident = incidentRepo.save(incident);
             }
 
-            // Update MAX temperature
             if (temp > incident.getMaxTemperature()) {
                 incident.setMaxTemperature(temp);
             }
 
-            // ALERT PROCESSING
             processEscalation(incident, temp);
-
             incidentRepo.save(incident);
-        }
-        else {
-            // TEMPERATURE NORMAL -> AUTO CLOSE INCIDENT
+        } else {
             closeIncidentIfExists(incident);
         }
     }
 
     private void processEscalation(Incident incident, double temp) {
-
         incident.setAlertCount(incident.getAlertCount() + 1);
-
         int alertNumber = incident.getAlertCount();
 
-        List<AppUser> operators = userRepo.findByRoleAndActive(UserRole.OPERATOR, true);
-        if (operators.isEmpty()) return;
-
-        // Determine highest operator index allowed
-        int operatorIndex = (alertNumber - 1) / ALERTS_PER_OPERATOR;
-        if (operatorIndex >= operators.size()) {
-            operatorIndex = operators.size() - 1;
+        List<AppUser> recipients = escalationPolicy.selectRecipients(incident, alertNumber);
+        if (recipients.isEmpty()) {
+            return;
         }
 
-        for (int i = 0; i <= operatorIndex; i++) {
+        String message = "ColdChain Alert\nTemperature reached " + temp + " C";
+        alertService.sendEmailAlert(temp);
+        alertService.sendTelegramAlert(message);
 
-            AppUser target = operators.get(i);
+        for (AppUser target : recipients) {
+            if (target.getId() == null) {
+                continue;
+            }
 
-            // 🔍 Check if ACK already created for this operator in this incident
             IncidentOperatorAck existingAck =
                     ackRepo.findByIncidentIdAndOperatorId(incident.getId(), target.getId());
 
-            if (existingAck == null) {
-                // 👉 FIRST TIME → create ACK + send alert
-                System.out.println("📣 Creating ACK & sending alert to " + target.getFullName());
-
-                String message = "ColdChain Alert\nTemperature reached " + temp + " C";
-
-                alertService.sendWhatsappAlert(target.getPhone(), message);
-                alertService.sendEmailAlert(temp);
-                alertService.sendTelegramAlert(message);
-//                try {
-//                    alertService.sendPushAlert(
-//                            target.getFcmToken(),
-//                            "ColdChain CRITICAL ALERT",
-//                            "Temperature reached " + temp + " C",
-//                            incident.getId()
-//                    );
-//                } catch (Exception e) {
-//                    System.out.println("❌ Failed to send push alert: " + e.getMessage());
-//                }
-
-                IncidentOperatorAck ack = IncidentOperatorAck.builder()
-                        .incident(incident)
-                        .operator(target)
-                        .acknowledged(false)
-                        .build();
-
-                ackRepo.save(ack);
-
-            } else {
-                // 👉 Already exists = DO NOTHING (NO DUPLICATE, NO SPAM)
-                System.out.println("⏭ ACK already exists for " + target.getFullName());
+            if (existingAck != null) {
+                log.info("ACK already exists for {}", target.getFullName());
+                continue;
             }
+
+            log.info("Creating ACK & sending alert to {}", target.getFullName());
+            alertService.sendWhatsappAlert(target.getPhone(), message);
+
+
+            IncidentOperatorAck ack = IncidentOperatorAck.builder()
+                    .incident(incident)
+                    .operator(target)
+                    .acknowledged(false)
+                    .build();
+
+            ackRepo.save(ack);
         }
     }
 
-
-
-
     private void closeIncidentIfExists(Incident incident) {
-        if (incident != null) {
-            incident.setActive(false);
-            incident.setEndTime(LocalDateTime.now());
-            incidentRepo.save(incident);
+        if (incident == null) {
+            return;
         }
+        incident.setActive(false);
+        incident.setEndTime(LocalDateTime.now());
+        incidentRepo.save(incident);
     }
 
     @Override
     public void acknowledgeIncident(Long operatorId) {
-
-        // 1. Get the current active incident
         Incident incident = incidentRepo.findByActiveTrue().orElse(null);
-        if (incident == null) return;
+        if (incident == null) {
+            return;
+        }
 
-        // 2. Get the operator
         AppUser operator = userRepo.findById(operatorId).orElse(null);
-        if (operator == null) return;
+        if (operator == null) {
+            return;
+        }
 
-        // 3. Find existing ACK entry (MUST create this repo method)
         IncidentOperatorAck existingAck =
                 ackRepo.findByIncidentIdAndOperatorId(incident.getId(), operatorId);
 
         if (existingAck != null) {
-            // ⚠️ UPDATE the existing ack
             existingAck.setAcknowledged(true);
             existingAck.setAckTime(LocalDateTime.now());
             ackRepo.save(existingAck);
-        } else {
-            // ⚠️ Otherwise create new only if not exists
-            IncidentOperatorAck newAck = IncidentOperatorAck.builder()
-                    .incident(incident)
-                    .operator(operator)
-                    .acknowledged(true)
-                    .ackTime(LocalDateTime.now())
-                    .build();
-
-            ackRepo.save(newAck);
+            return;
         }
-    }
 
+        IncidentOperatorAck newAck = IncidentOperatorAck.builder()
+                .incident(incident)
+                .operator(operator)
+                .acknowledged(true)
+                .ackTime(LocalDateTime.now())
+                .build();
+
+        ackRepo.save(newAck);
+    }
 
     @Override
     public void addComment(Long operatorId, String comment) {
-
         Incident incident = incidentRepo.findByActiveTrue().orElse(null);
-        if (incident == null) return;
+        if (incident == null) {
+            return;
+        }
 
         AppUser operator = userRepo.findById(operatorId).orElse(null);
-        if (operator == null) return;
+        if (operator == null) {
+            return;
+        }
 
         IncidentComment c = IncidentComment.builder()
                 .incident(incident)
@@ -180,15 +160,15 @@ public class IncidentServiceImpl implements IncidentService {
                 .createdAt(LocalDateTime.now())
                 .build();
 
-
         commentRepo.save(c);
     }
 
     @Override
     public IncidentDetailsResponse getIncidentDetails(Long id) {
-
         Incident incident = incidentRepo.findById(id).orElse(null);
-        if (incident == null) return null;
+        if (incident == null) {
+            return null;
+        }
 
         IncidentDetailsResponse response = new IncidentDetailsResponse();
         response.setId(incident.getId());
@@ -197,7 +177,6 @@ public class IncidentServiceImpl implements IncidentService {
         response.setStartTime(incident.getStartTime());
         response.setEndTime(incident.getEndTime());
 
-        // 🔥 Build Comments List
         List<IncidentDetailsResponse.CommentDTO> commentList =
                 incident.getComments()
                         .stream()
@@ -210,7 +189,6 @@ public class IncidentServiceImpl implements IncidentService {
                         })
                         .toList();
 
-        // 🔥 Build ACK List
         List<IncidentDetailsResponse.AckDTO> ackList =
                 incident.getAcknowledgments()
                         .stream()
@@ -225,10 +203,8 @@ public class IncidentServiceImpl implements IncidentService {
 
         response.setComments(commentList);
         response.setAcknowledgments(ackList);
-
         return response;
     }
-
 
     @Override
     public Incident getActiveIncident() {

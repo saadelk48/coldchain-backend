@@ -1,5 +1,6 @@
 package ehei.iot.coldChain.controller;
 
+import ehei.iot.coldChain.config.props.IngestProperties;
 import ehei.iot.coldChain.entity.Measurement;
 import ehei.iot.coldChain.service.MeasurementService;
 import lombok.RequiredArgsConstructor;
@@ -15,13 +16,14 @@ import java.util.List;
 public class MeasurementController {
 
     private final MeasurementService measurementService;
+    private final IngestProperties ingestProperties;
 
     @PostMapping
     public ResponseEntity<?> create(
             @RequestHeader("X-API-KEY") String apiKey,
             @RequestBody Measurement measurement) {
 
-        if (!apiKey.equals("MY_SECRET_KEY_12345")) {
+        if (!apiKey.equals(ingestProperties.getApiKey())) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid API KEY");
         }
 

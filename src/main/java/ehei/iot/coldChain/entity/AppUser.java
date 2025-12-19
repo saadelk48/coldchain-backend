@@ -1,6 +1,7 @@
 package ehei.iot.coldChain.entity;
 
 import ehei.iot.coldChain.enums.UserRole;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -16,8 +17,15 @@ public class AppUser {
     private Long id;
 
     private String fullName;
+
+    @Column(unique = true)
     private String email;
+
+    @Column(unique = true)
     private String phone;
+
+    @JsonIgnore
+    private String passwordHash;
 
     @Enumerated(EnumType.STRING)
     private UserRole role;
