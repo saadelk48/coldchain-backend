@@ -1,7 +1,10 @@
 package ehei.iot.coldChain.entity;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import jakarta.persistence.*;
 import lombok.*;
+
+import java.time.Instant;
 import java.time.LocalDateTime;
 
 @Entity
@@ -19,5 +22,6 @@ public class Measurement {
     private double humidity;
 
     @Builder.Default
-    private LocalDateTime timestamp = LocalDateTime.now();
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'", timezone = "UTC")
+    private Instant timestamp = Instant.now();
 }
