@@ -1,0 +1,112 @@
+ColdChain Backend - Summary (for future reference)
+=================================================
+Date: 2025-12-18
+
+Project Structure
+-----------------
+- Type: Spring Boot 3.5.8 backend (Java 17), Maven (pom.xml)
+- Entry point: src/main/java/ehei/iot/coldChain/ColdChainApplication.java
+- Main packages:
+  - controller/
+    - MeasurementController: /api/measurements
+    - IncidentController: /api/incidents
+    - AuthController: /api/auth (added)
+    - ApiExceptionHandler: global REST error mapping (added)
+  - entity/: Measurement, Incident, IncidentComment, IncidentOperatorAck, AppUser, Ticket, Sensor, AuditLog
+  - repository/: Spring Data JPA repositories for the entities
+  - service/: business services + implementations
+  - service/escalation/: escalation strategy abstraction + implementation (added)
+  - security/: UserDetailsService + JWT token service (added)
+  - config/: Spring Security + CORS config
+  - config/props/: @ConfigurationProperties for ingest/alerts/jwt (added)
+
+Containers / Runtime
+--------------------
+docker-compose.yml defines:
+- db: postgres:15
+  - DB: coldchain
+  - User: postgres
+  - Password: password
+  - Ports: 5432:5432
+  - Volume: postgres_data
+- app: backend container built from Dockerfile
+  - Ports: 8080:8080
+  - Connects to DB via jdbc:postgresql://db:5432/coldchain (compose network)
+
+Objectives Targeted
+-------------------
+- Move secrets/API keys out of source code into env/config (best practices).
+- Add authentication using Spring Security + JWT (frontend/admin users).
+- Keep IoT ingestion protected via API key (machine-to-machine).
+- Improve incident escalation recipient selection (avoid relying on DB “index order”).
+- Keep code clean and closer to SOLID principles.
+
+High-Value Changes Made
+-----------------------
+1) Secrets externalization
+   - src/main/resources/application.properties updated to support env overrides:
+     - SPRING_MAIL_USERNAME / SPRING_MAIL_PASSWORD
+     - INGEST_API_KEY (for POST /api/measurements)
+     - ALERT_EMAIL_TO, WHATSAPP_API_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+     - JWT_SECRET, JWT_ISSUER, JWT_TTL_SECONDS
+   - Added .env.example
+   - Cleaned .gitignore and ensured .env and firebase credential JSON are ignored
+   - AlertServiceImpl updated to remove hardcoded tokens/targets and read from AlertProperties
+
+2) Authentication / Authorization (JWT)
+   - Added dependencies:
+     - spring-boot-starter-oauth2-resource-server
+     - spring-security-oauth2-jose
+   - AppUser updated:
+     - passwordHash (stored, hidden from JSON)
+     - email unique, phone unique
+   - Added:
+     - security/AppUserDetailsService (DB-backed UserDetails)
+     - security/JwtTokenService (issues HS256 JWT)
+     - controller/AuthController: POST /api/auth/register, POST /api/auth/login
+     - controller/ApiExceptionHandler: returns JSON errors for common validation issues
+   - Security rules:
+     - Permit: /api/auth/**
+     - Permit: POST /api/measurements (ingest endpoint uses X-API-KEY)
+     - Require JWT Bearer for everything else
+
+3) Incident escalation refactor
+   - Added strategy interface: IncidentEscalationPolicy
+   - Default policy: RoleBasedRoundRobinEscalationPolicy
+     - escalation order: OPERATOR -> SUPERVISOR -> DIRECTOR
+     - stable round-robin selection per alert stage (instead of operators.get(i) by DB order)
+   - IncidentServiceImpl rewritten to use the policy and avoid duplicate alert spam via ACK checks
+
+Known Issues / Notes
+--------------------
+- Registration errors you saw:
+  - Postgres unique constraint violation on phone when registering duplicate phone.
+  - Now handled with clean 409 Conflict JSON errors.
+
+- Login returning 401:
+  - Earlier logs showed JwtEncodingException: “Failed to select a JWK signing key”.
+  - Fix applied: JWT encoder should be built from a SecretKey (HS256) and JWT secret must be >= 32 bytes.
+  - If you still see the JwtEncodingException, the running container is likely not rebuilt/restarted with the latest code.
+
+- Tests:
+  - Local Maven tests (mvnw test) ran successfully.
+  - Docker builds can sometimes fail due to transient Maven download issues; retrying usually resolves it.
+
+Manual API Test Endpoints (Postman)
+-----------------------------------
+Base URL: http://localhost:8080
+
+Auth
+- POST /api/auth/register
+- POST /api/auth/login  -> returns { "token": "..." } (Bearer token)
+
+Measurements
+- POST /api/measurements (requires header X-API-KEY)
+- GET /api/measurements (requires Authorization: Bearer <token>)
+- GET /api/measurements/{id} (requires Authorization: Bearer <token>)
+
+Incidents (requires Authorization: Bearer <token>)
+- GET /api/incidents/active
+- GET /api/incidents/{incidentId}
+- POST /api/incidents/{operatorId}/ack
+- POST /api/incidents/{operatorId}/comment

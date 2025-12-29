@@ -1,6 +1,8 @@
 package ehei.iot.coldChain.service.impl;
 
+import ehei.iot.coldChain.dto.ArchivedIncidentSummaryResponse;
 import ehei.iot.coldChain.dto.IncidentDetailsResponse;
+import ehei.iot.coldChain.dto.OperatorDto;
 import ehei.iot.coldChain.entity.AppUser;
 import ehei.iot.coldChain.entity.Incident;
 import ehei.iot.coldChain.entity.IncidentComment;
@@ -69,10 +71,14 @@ public class IncidentServiceImpl implements IncidentService {
             return;
         }
 
-        String message = "ColdChain Alert\nTemperature reached " + temp + " C";
+        String message = "ColdChain Alert\nTemperature reached " + temp + " °C";
+
+        // 🔔 Broadcast alerts (fixed destinations)
         alertService.sendEmailAlert(temp);
         alertService.sendTelegramAlert(message);
+        alertService.sendWhatsappAlert(message); // ✅ FIXED PHONE (CallMeBot)
 
+        // 👤 Per-operator ACK creation (NO WhatsApp here)
         for (AppUser target : recipients) {
             if (target.getId() == null) {
                 continue;
@@ -86,9 +92,7 @@ public class IncidentServiceImpl implements IncidentService {
                 continue;
             }
 
-            log.info("Creating ACK & sending alert to {}", target.getFullName());
-            alertService.sendWhatsappAlert(target.getPhone(), message);
-
+            log.info("Creating ACK for {}", target.getFullName());
 
             IncidentOperatorAck ack = IncidentOperatorAck.builder()
                     .incident(incident)
@@ -99,6 +103,7 @@ public class IncidentServiceImpl implements IncidentService {
             ackRepo.save(ack);
         }
     }
+
 
     private void closeIncidentIfExists(Incident incident) {
         if (incident == null) {
@@ -178,11 +183,20 @@ public class IncidentServiceImpl implements IncidentService {
         response.setEndTime(incident.getEndTime());
 
         List<IncidentDetailsResponse.CommentDTO> commentList =
-                incident.getComments()
-                        .stream()
+                incident.getComments().stream()
                         .map(c -> {
-                            IncidentDetailsResponse.CommentDTO dto = new IncidentDetailsResponse.CommentDTO();
-                            dto.setOperator(c.getOperator().getFullName());
+                            IncidentDetailsResponse.CommentDTO dto =
+                                    new IncidentDetailsResponse.CommentDTO();
+
+                            dto.setOperator(
+                                    new OperatorDto(
+                                            c.getOperator().getId(),
+                                            c.getOperator().getFullName(),
+                                            c.getOperator().getEmail(),
+                                            c.getOperator().getRole()
+                                    )
+                            );
+
                             dto.setMessage(c.getMessage());
                             dto.setCreatedAt(c.getCreatedAt());
                             return dto;
@@ -190,16 +204,26 @@ public class IncidentServiceImpl implements IncidentService {
                         .toList();
 
         List<IncidentDetailsResponse.AckDTO> ackList =
-                incident.getAcknowledgments()
-                        .stream()
+                incident.getAcknowledgments().stream()
                         .map(a -> {
-                            IncidentDetailsResponse.AckDTO dto = new IncidentDetailsResponse.AckDTO();
-                            dto.setOperator(a.getOperator().getFullName());
+                            IncidentDetailsResponse.AckDTO dto =
+                                    new IncidentDetailsResponse.AckDTO();
+
+                            dto.setOperator(
+                                    new OperatorDto(
+                                            a.getOperator().getId(),
+                                            a.getOperator().getFullName(),
+                                            a.getOperator().getEmail(),
+                                            a.getOperator().getRole()
+                                    )
+                            );
+
                             dto.setAcknowledged(a.isAcknowledged());
                             dto.setAckTime(a.getAckTime());
                             return dto;
                         })
                         .toList();
+
 
         response.setComments(commentList);
         response.setAcknowledgments(ackList);
@@ -210,4 +234,32 @@ public class IncidentServiceImpl implements IncidentService {
     public Incident getActiveIncident() {
         return incidentRepo.findByActiveTrue().orElse(null);
     }
+
+
+    @Override
+    public List<ArchivedIncidentSummaryResponse> getArchivedIncidents() {
+        return incidentRepo.findByActiveFalseOrderByEndTimeDesc()
+                .stream()
+                .map(incident -> ArchivedIncidentSummaryResponse.builder()
+                        .id(incident.getId())
+                        .startTime(incident.getStartTime())
+                        .endTime(incident.getEndTime())
+                        .alertCount(incident.getAlertCount())
+                        .maxTemperature(incident.getMaxTemperature())
+                        .build()
+                )
+                .toList();
+    }
+
+    @Override
+    public IncidentDetailsResponse getArchivedIncidentDetails(Long incidentId) {
+        Incident incident = incidentRepo.findById(incidentId).orElse(null);
+
+        if (incident == null || incident.isActive()) {
+            return null;
+        }
+
+        return getIncidentDetails(incidentId);
+    }
+
 }

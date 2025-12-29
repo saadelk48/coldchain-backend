@@ -23,14 +23,15 @@ public class IncidentComment {
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
-    @ManyToOne
+    @ManyToOne(optional = false, fetch = FetchType.LAZY)
+    @JoinColumn(name = "incident_id", nullable = false)
     @JsonIgnore
-    @JoinColumn(name = "incident_id")
     private Incident incident;
 
-    @ManyToOne
-    @JoinColumn(name = "operator_id")
+    @ManyToOne(optional = false, fetch = FetchType.LAZY)
+    @JoinColumn(name = "operator_id", nullable = false)
     private AppUser operator;
+
 }
 
 

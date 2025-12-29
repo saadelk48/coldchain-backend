@@ -16,14 +16,17 @@ public class IncidentOperatorAck {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne
+    @ManyToOne(optional = false, fetch = FetchType.LAZY)
+    @JoinColumn(name = "incident_id", nullable = false)
     @JsonIgnore
     private Incident incident;
 
-    @ManyToOne
+    @ManyToOne(optional = false, fetch = FetchType.LAZY)
+    @JoinColumn(name = "operator_id", nullable = false)
     private AppUser operator;
 
     private boolean acknowledged;
 
     private LocalDateTime ackTime;
 }
+

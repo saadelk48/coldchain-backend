@@ -18,14 +18,14 @@ public class IncidentDetailsResponse {
 
     @Data
     public static class CommentDTO {
-        private String operator;
+        private OperatorDto operator;
         private String message;
         private LocalDateTime createdAt;
     }
 
     @Data
     public static class AckDTO {
-        private String operator;
+        private OperatorDto operator;
         private boolean acknowledged;
         private LocalDateTime ackTime;
     }
